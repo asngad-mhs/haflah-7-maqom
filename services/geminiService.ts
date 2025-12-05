@@ -1,12 +1,13 @@
 import { GoogleGenAI } from "@google/genai";
 
-const apiKey = process.env.API_KEY || '';
-const ai = new GoogleGenAI({ apiKey });
-
 export const askMaqamExpert = async (question: string): Promise<string> => {
+  // Inisialisasi AI dipindahkan ke sini untuk mencegah crash saat pemuatan awal.
+  // Ini memastikan API Key hanya diakses saat fungsi ini dipanggil.
+  const apiKey = process.env.API_KEY || '';
   if (!apiKey) {
     return "Maaf, API Key belum dikonfigurasi. Silakan hubungi administrator.";
   }
+  const ai = new GoogleGenAI({ apiKey });
 
   try {
     const response = await ai.models.generateContent({
