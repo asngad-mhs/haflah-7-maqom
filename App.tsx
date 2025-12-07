@@ -26,73 +26,28 @@ const App: React.FC = () => {
   const [shuffledIndices, setShuffledIndices] = useState<number[]>([]);
   const [shuffledPlaybackIndex, setShuffledPlaybackIndex] = useState(0);
 
-  // Professional Audio State
+  // Simplified Audio State
   const [isBuffering, setIsBuffering] = useState(false);
-  const [audioQueue, setAudioQueue] = useState<string[]>([]);
-  const [currentQueueIndex, setCurrentQueueIndex] = useState(0);
   
   const audioRef = useRef<HTMLAudioElement>(null);
 
   const currentTrack = playlist[currentTrackIndex];
 
-  // EFFECT 1: Fetch audio data from API and build the verse-by-verse queue when a new track is selected.
-  useEffect(() => {
-    if (!currentTrack) {
-      setAudioQueue([]);
-      return;
-    }
-
-    const fetchAudioData = async () => {
-      setIsBuffering(true);
-      setAudioQueue([]);
-
-      try {
-        const { surahNumber, ayah } = currentTrack;
-        const [startAyah, endAyah] = ayah.split('-').map(Number);
-        const end = endAyah || startAyah;
-
-        const versePromises = Array.from({ length: end - startAyah + 1 }, (_, i) =>
-          getVerseDetails(surahNumber, startAyah + i)
-        );
-
-        const results = await Promise.all(versePromises);
-        const validUrls = results
-          .filter((v): v is VerseDetails => !!v?.audio?.url)
-          .map(v => `https://verses.quran.com/${v.audio.url}`);
-        
-        if (validUrls.length === 0) throw new Error("Audio tidak dapat ditemukan untuk ayat yang dipilih.");
-        
-        setAudioQueue(validUrls);
-        setCurrentQueueIndex(0);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Gagal memuat audio dari API.";
-        console.error("Gagal memuat data audio:", message);
-        alert(message);
-        handleClosePlayer();
-      }
-    };
-
-    fetchAudioData();
-  }, [currentTrack]);
-
-  // EFFECT 2: Manage the audio element's source based on the current position in the queue.
+  // EFFECT 1: Manage audio element source based on the current track.
+  // This replaces the complex verse-by-verse fetching logic with direct URL usage.
   useEffect(() => {
     const audio = audioRef.current;
-    if (!audio) return;
+    if (!audio || !currentTrack) return;
 
-    if (audioQueue.length > 0) {
-      const newSrc = audioQueue[currentQueueIndex];
-      if (audio.src !== newSrc) {
-        audio.src = newSrc;
-        audio.load();
-        setIsBuffering(true);
-      }
-    } else {
-      audio.src = '';
+    // Set the source to the full track URL from constants.ts
+    if (audio.src !== currentTrack.url) {
+      audio.src = currentTrack.url;
+      audio.load();
+      setIsBuffering(true);
     }
-  }, [audioQueue, currentQueueIndex]);
+  }, [currentTrack]);
 
-  // EFFECT 3: Control playback (play/pause).
+  // EFFECT 2: Control playback (play/pause).
   useEffect(() => {
     const audio = audioRef.current;
     if (!audio || !audio.src) return;
@@ -110,9 +65,9 @@ const App: React.FC = () => {
     } else {
       audio.pause();
     }
-  }, [isPlaying, audioQueue, currentQueueIndex]);
+  }, [isPlaying, currentTrack]);
   
-  // Effect to manage shuffle list
+  // EFFECT 3: Manage shuffle list
   useEffect(() => {
     if (isShuffleOn && playlist.length > 0) {
       const indices = Array.from(playlist.keys());
@@ -188,46 +143,39 @@ const App: React.FC = () => {
     setCurrentMaqamName('');
     setIsShuffleOn(false);
     setIsAutoplayOn(true);
-    setAudioQueue([]);
   };
 
   const handleToggleShuffle = () => setIsShuffleOn(!isShuffleOn);
   const handleToggleAutoplay = () => setIsAutoplayOn(!isAutoplayOn);
 
+  // Simplified handler for when a full track ends
   const handleTrackEnd = () => {
-    const isLastInQueue = currentQueueIndex >= audioQueue.length - 1;
-    if (!isLastInQueue) {
-      setCurrentQueueIndex(prev => prev + 1);
+    if (isAutoplayOn) {
+      handleNext();
     } else {
-      if (isAutoplayOn) {
-        handleNext();
-      } else {
-        setIsPlaying(false);
-      }
+      setIsPlaying(false);
     }
   };
 
   const handleRemoveTrack = (indexToRemove: number) => {
-    const newPlaylist = [...playlist];
-    newPlaylist.splice(indexToRemove, 1);
+    const currentTrackId = playlist[currentTrackIndex].id;
+    const newPlaylist = playlist.filter((_, index) => index !== indexToRemove);
 
     if (newPlaylist.length === 0) {
       handleClosePlayer();
       return;
     }
 
-    if (indexToRemove < currentTrackIndex) {
-      setCurrentTrackIndex(prev => prev - 1);
-    } else if (indexToRemove === currentTrackIndex) {
-      if (currentTrackIndex >= newPlaylist.length) {
-        setCurrentTrackIndex(0);
-      } else {
-         // Re-trigger useEffect for the same track index to rebuild the queue
-         setPlaylist([...newPlaylist]);
-      }
+    let newCurrentIndex = newPlaylist.findIndex(track => track.id === currentTrackId);
+    
+    // If the currently playing track was the one removed...
+    if (newCurrentIndex === -1) {
+      // ...then the new index should be the same as the old one, clamped to the new list's bounds.
+      newCurrentIndex = Math.min(currentTrackIndex, newPlaylist.length - 1);
     }
     
     setPlaylist(newPlaylist);
+    setCurrentTrackIndex(newCurrentIndex);
     setIsShuffleOn(false);
   };
 
